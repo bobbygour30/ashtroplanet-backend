@@ -9,7 +9,9 @@ dotenv.config();
 
 const app = express();
 
-// CORS configuration
+/* ================================
+   CORS CONFIG
+================================ */
 const allowedOrigins = [
   "https://ashtro-seven.vercel.app",
   "http://localhost:5173",
@@ -19,7 +21,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (Postman, server-to-server, health checks)
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
@@ -29,29 +30,68 @@ app.use(
       return callback(new Error("Not allowed by CORS"));
     },
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"],
+    allowedHeaders: [
+      "Origin",
+      "X-Requested-With",
+      "Content-Type",
+      "Accept",
+      "Authorization",
+    ],
     credentials: true,
   })
 );
 
-// Handle preflight
+// Preflight
 app.options("*", cors());
 
-// Body parsing middleware
+/* ================================
+   BODY PARSER
+================================ */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint
+/* ================================
+   🔥 DB CONNECTION MIDDLEWARE (FIX)
+================================ */
+let isAdminInitialized = false;
+
+app.use(async (req, res, next) => {
+  try {
+    await connectDB(); // ensure DB is connected
+
+    // Run admin init only once
+    if (!isAdminInitialized) {
+      await initializeDefaultAdmin();
+      isAdminInitialized = true;
+      console.log("✅ Admin initialized");
+    }
+
+    next();
+  } catch (error) {
+    console.error("❌ DB connection failed:", error.message);
+    return res.status(500).json({
+      msg: "Database connection failed",
+      error: error.message,
+    });
+  }
+});
+
+/* ================================
+   HEALTH CHECK
+================================ */
 app.get("/api/health", (req, res) => {
   res.json({
     status: "OK",
     message: "API is running",
     timestamp: new Date().toISOString(),
-    mongodb: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
+    mongodb:
+      mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
   });
 });
 
-// Test CORS endpoint
+/* ================================
+   TEST CORS
+================================ */
 app.get("/api/test-cors", (req, res) => {
   res.json({
     message: "CORS is working!",
@@ -59,25 +99,34 @@ app.get("/api/test-cors", (req, res) => {
   });
 });
 
-// Routes
+/* ================================
+   ROUTES
+================================ */
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 
-// Root route
+/* ================================
+   ROOT
+================================ */
 app.get("/", (req, res) => {
   res.json({
     message: "AstroPlanets Auth API is running",
     version: "1.0.0",
-    mongodb: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
+    mongodb:
+      mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
   });
 });
 
-// 404 handler
+/* ================================
+   404
+================================ */
 app.use((req, res) => {
   res.status(404).json({ msg: "Route not found" });
 });
 
-// Error handling middleware
+/* ================================
+   ERROR HANDLER
+================================ */
 app.use((err, req, res, next) => {
   console.error("Error:", err);
 
@@ -92,26 +141,14 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Connect DB once
-const initializeApp = async () => {
-  try {
-    await connectDB();
-    console.log("✅ Database connected successfully");
-
-    await initializeDefaultAdmin();
-    console.log("✅ Default admin initialized successfully");
-  } catch (error) {
-    console.error("❌ App initialization failed:", error.message);
-  }
-};
-
-// Initialize app
-initializeApp();
-
-// Export for Vercel
+/* ================================
+   EXPORT FOR VERCEL
+================================ */
 module.exports = app;
 
-// Local development server
+/* ================================
+   LOCAL SERVER
+================================ */
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
 
