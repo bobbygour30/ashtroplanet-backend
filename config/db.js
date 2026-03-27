@@ -1,13 +1,24 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
+
+let isConnected = false; // global cache
 
 const connectDB = async () => {
+  if (isConnected) {
+    console.log("⚡ Using existing DB connection");
+    return;
+  }
+
   try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log('MongoDB connected');
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
+      bufferCommands: false,
+    });
+
+    isConnected = conn.connections[0].readyState === 1;
+    console.log("✅ MongoDB connected");
   } catch (err) {
-    console.error(err.message);
-    process.exit(1);
+    console.error("❌ MongoDB connection error:", err.message);
+    throw err; // ❗ DO NOT exit process
   }
 };
 
-module.exports = connectDB; 
+module.exports = connectDB;
