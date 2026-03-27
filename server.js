@@ -1,6 +1,7 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const { initializeDefaultAdmin } = require('./controllers/adminController');
 
@@ -9,8 +10,30 @@ dotenv.config();
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// CORS configuration
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'https://ashtro-seven.vercel.app', // Replace with your frontend URL
+  'http://localhost:3000',
+  'http://localhost:5173'
+].filter(Boolean);
+
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -19,7 +42,8 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     message: 'API is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
   });
 });
 
@@ -29,42 +53,60 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 
 // Root route
 app.get('/', (req, res) => {
-  res.json({ message: 'AstroPlanets Auth API is running' });
+  res.json({ 
+    message: 'AstroPlanets Auth API is running',
+    version: '1.0.0',
+    endpoints: {
+      auth: '/api/auth',
+      admin: '/api/admin',
+      health: '/api/health'
+    }
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ msg: `Route ${req.method} ${req.url} not found` });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ msg: 'Something went wrong!', error: err.message });
+  console.error('Error:', err.stack);
+  res.status(err.status || 500).json({ 
+    msg: err.message || 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
-// Connect to database (non-blocking for Vercel)
-let dbConnected = false;
-const mongoose = require('mongoose');
+// Database connection
+let connectionPromise = null;
 
-const startDB = async () => {
-  try {
-    if (!dbConnected && mongoose.connection.readyState !== 1) {
-      await connectDB();
-      dbConnected = true;
+const initDatabase = async () => {
+  if (!connectionPromise) {
+    connectionPromise = connectDB().then(async () => {
       await initializeDefaultAdmin();
-      console.log('✅ Database connected');
-    }
-  } catch (error) {
-    console.error('❌ Database connection error:', error.message);
+      console.log('✅ Database initialized');
+      return true;
+    }).catch(err => {
+      console.error('❌ Database init failed:', err);
+      return false;
+    });
   }
+  return connectionPromise;
 };
 
-// Start DB connection (don't await, let it run in background)
-startDB();
+// Initialize DB in background
+initDatabase();
 
-// For Vercel, export the app
+// Export for Vercel
 module.exports = app;
 
-// For local development
-if (process.env.NODE_ENV !== 'production') {
+// Local development server
+if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📍 http://localhost:${PORT}`);
+    console.log(`CORS enabled for:`, allowedOrigins);
   });
 }
