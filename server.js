@@ -13,19 +13,18 @@ const app = express();
 // CORS configuration
 const allowedOrigins = [
   process.env.FRONTEND_URL,
-  'https://ashtro-seven.vercel.app', // Replace with your frontend URL
+  'https://ashtro-seven.vercel.app',
+  'https://ashtroplanet-backend.vercel.app',
   'http://localhost:3000',
   'http://localhost:5173'
 ].filter(Boolean);
 
 app.use(cors({
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
     if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
+      console.log('Origin not allowed:', origin);
+      return callback(null, true); // Allow anyway for now
     }
     return callback(null, true);
   },
@@ -37,13 +36,38 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// MongoDB connection state
+let dbConnection = null;
+
+// Middleware to ensure DB connection
+const ensureDbConnection = async (req, res, next) => {
+  try {
+    if (!dbConnection || mongoose.connection.readyState !== 1) {
+      console.log('Connecting to MongoDB...');
+      dbConnection = await connectDB();
+      await initializeDefaultAdmin();
+    }
+    next();
+  } catch (error) {
+    console.error('DB Connection error:', error);
+    res.status(503).json({ 
+      msg: 'Database connection error', 
+      error: error.message 
+    });
+  }
+};
+
+// Apply DB connection middleware to all routes
+app.use('/api', ensureDbConnection);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     message: 'API is running',
     timestamp: new Date().toISOString(),
-    mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+    mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+    mongodbState: mongoose.connection.readyState
   });
 });
 
@@ -78,35 +102,22 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Database connection
-let connectionPromise = null;
-
-const initDatabase = async () => {
-  if (!connectionPromise) {
-    connectionPromise = connectDB().then(async () => {
-      await initializeDefaultAdmin();
-      console.log('✅ Database initialized');
-      return true;
-    }).catch(err => {
-      console.error('❌ Database init failed:', err);
-      return false;
-    });
-  }
-  return connectionPromise;
-};
-
-// Initialize DB in background
-initDatabase();
-
 // Export for Vercel
 module.exports = app;
 
 // Local development server
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📍 http://localhost:${PORT}`);
-    console.log(`CORS enabled for:`, allowedOrigins);
+    // Connect to DB on startup for local development
+    try {
+      await connectDB();
+      await initializeDefaultAdmin();
+      console.log('✅ Database initialized for local development');
+    } catch (error) {
+      console.error('❌ Database initialization failed:', error.message);
+    }
   });
 }

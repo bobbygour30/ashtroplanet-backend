@@ -38,6 +38,10 @@ const registerUser = async (req, res) => {
     }
   } catch (error) {
     console.error('Register error:', error);
+    // Check if it's a MongoDB connection error
+    if (error.name === 'MongoNetworkError' || error.message.includes('buffering timed out')) {
+      return res.status(503).json({ msg: 'Database connection error. Please try again.' });
+    }
     res.status(500).json({ msg: 'Server error', error: error.message });
   }
 };

@@ -6,22 +6,26 @@ const connectDB = async () => {
       throw new Error('MONGODB_URI is not defined in environment variables');
     }
     
+    // Check if already connected
+    if (mongoose.connection.readyState === 1) {
+      console.log('✅ Already connected to MongoDB');
+      return mongoose.connection;
+    }
+    
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+      serverSelectionTimeoutMS: 10000, // 10 seconds
+      socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+      maxPoolSize: 10, // Maintain up to 10 socket connections
     });
     
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
     return conn;
   } catch (error) {
     console.error(`❌ MongoDB Connection Error: ${error.message}`);
-    // Don't exit the process in Vercel environment
-    if (process.env.NODE_ENV !== 'production') {
-      process.exit(1);
-    }
-    throw error;
+    throw error; // Throw error instead of exiting
   }
 };
 
