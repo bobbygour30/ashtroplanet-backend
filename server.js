@@ -1,102 +1,112 @@
-const express = require('express');
-const dotenv = require('dotenv');
-const cors = require('cors');
-const mongoose = require('mongoose');
-const connectDB = require('./config/db');
-const { initializeDefaultAdmin } = require('./controllers/adminController');
+const express = require("express");
+const dotenv = require("dotenv");
+const cors = require("cors");
+const mongoose = require("mongoose");
+const connectDB = require("./config/db");
+const { initializeDefaultAdmin } = require("./controllers/adminController");
 
 dotenv.config();
 
 const app = express();
 
-// FORCE CORS HEADERS - Place this BEFORE any other middleware
-app.use((req, res, next) => {
-  // Allow all origins for now (you can restrict later)
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
+// CORS configuration
+const allowedOrigins = [
+  "https://ashtro-seven.vercel.app",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (Postman, server-to-server, health checks)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"],
+    credentials: true,
+  })
+);
+
+// Handle preflight
+app.options("*", cors());
 
 // Body parsing middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Global connection variable
-let dbConnected = false;
-
-// Middleware to ensure DB connection with retry
-const ensureDbConnection = async (req, res, next) => {
-  try {
-    if (!dbConnected || mongoose.connection.readyState !== 1) {
-      console.log('📡 Connecting to database...');
-      await connectDB();
-      dbConnected = true;
-      console.log('✅ Database connected successfully');
-      
-      // Initialize admin only once
-      await initializeDefaultAdmin();
-    }
-    next();
-  } catch (error) {
-    console.error('❌ Database connection failed:', error.message);
-    res.status(503).json({ 
-      msg: 'Database connection error. Please try again.',
-      error: error.message
-    });
-  }
-};
-
-// Health check endpoint (no DB connection required)
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'API is running',
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "OK",
+    message: "API is running",
     timestamp: new Date().toISOString(),
-    mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+    mongodb: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
   });
 });
 
 // Test CORS endpoint
-app.get('/api/test-cors', (req, res) => {
-  res.json({ 
-    message: 'CORS is working!',
-    origin: req.headers.origin,
-    headers: req.headers
+app.get("/api/test-cors", (req, res) => {
+  res.json({
+    message: "CORS is working!",
+    origin: req.headers.origin || null,
   });
 });
 
-// Apply DB connection middleware to all API routes
-app.use('/api/auth', ensureDbConnection, require('./routes/authRoutes'));
-app.use('/api/admin', ensureDbConnection, require('./routes/adminRoutes'));
+// Routes
+app.use("/api/auth", require("./routes/authRoutes"));
+app.use("/api/admin", require("./routes/adminRoutes"));
 
 // Root route
-app.get('/', (req, res) => {
-  res.json({ 
-    message: 'AstroPlanets Auth API is running',
-    version: '1.0.0',
-    mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+app.get("/", (req, res) => {
+  res.json({
+    message: "AstroPlanets Auth API is running",
+    version: "1.0.0",
+    mongodb: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
   });
 });
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ msg: 'Route not found' });
+  res.status(404).json({ msg: "Route not found" });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(err.status || 500).json({ 
-    msg: err.message || 'Something went wrong!'
+  console.error("Error:", err);
+
+  if (err.message === "Not allowed by CORS") {
+    return res.status(403).json({
+      msg: "CORS error: Origin not allowed",
+    });
+  }
+
+  res.status(err.status || 500).json({
+    msg: err.message || "Something went wrong!",
   });
 });
+
+// Connect DB once
+const initializeApp = async () => {
+  try {
+    await connectDB();
+    console.log("✅ Database connected successfully");
+
+    await initializeDefaultAdmin();
+    console.log("✅ Default admin initialized successfully");
+  } catch (error) {
+    console.error("❌ App initialization failed:", error.message);
+  }
+};
+
+// Initialize app
+initializeApp();
 
 // Export for Vercel
 module.exports = app;
@@ -104,18 +114,9 @@ module.exports = app;
 // Local development server
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, async () => {
+
+  app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📍 http://localhost:${PORT}`);
-    console.log(`✅ CORS enabled for all origins`);
-    
-    // Connect to DB for local development
-    try {
-      await connectDB();
-      await initializeDefaultAdmin();
-      console.log('✅ Database ready for local development');
-    } catch (error) {
-      console.error('❌ Could not connect to database locally:', error.message);
-    }
   });
 }
