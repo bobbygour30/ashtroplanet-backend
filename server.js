@@ -104,6 +104,10 @@ app.get("/api/test-cors", (req, res) => {
 ================================ */
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
+// Add this after other routes
+app.use('/api/products', require('./routes/productRoutes'));
+// Add this with other routes
+app.use('/api/upload', require('./routes/uploadRoutes'));
 
 /* ================================
    ROOT
