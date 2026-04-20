@@ -108,6 +108,9 @@ app.use("/api/admin", require("./routes/adminRoutes"));
 app.use('/api/products', require('./routes/productRoutes'));
 // Add this with other routes
 app.use('/api/upload', require('./routes/uploadRoutes'));
+// Add these with other routes
+app.use('/api/cart', require('./routes/cartRoutes'));
+app.use('/api/payment', require('./routes/paymentRoutes'));
 
 /* ================================
    ROOT
