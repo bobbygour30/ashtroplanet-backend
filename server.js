@@ -111,6 +111,8 @@ app.use('/api/upload', require('./routes/uploadRoutes'));
 // Add these with other routes
 app.use('/api/cart', require('./routes/cartRoutes'));
 app.use('/api/payment', require('./routes/paymentRoutes'));
+app.use('/api/bookings', require('./routes/bookingRoutes'));
+app.use('/api/orders', require('./routes/orderRoutes'));
 
 /* ================================
    ROOT
