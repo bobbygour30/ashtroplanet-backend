@@ -34,9 +34,21 @@ const orderSchema = new mongoose.Schema(
         image: String,
       },
     ],
+    originalAmount: {
+      type: Number,
+      required: true,
+    },
     totalAmount: {
       type: Number,
       required: true,
+    },
+    discount: {
+      type: Number,
+      default: 0,
+    },
+    appliedCoupon: {
+      type: String,
+      default: null,
     },
     shippingAddress: {
       fullName: String,
@@ -67,6 +79,15 @@ const orderSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Generate unique order ID before saving
+orderSchema.pre('save', async function(next) {
+  if (!this.orderId) {
+    const count = await mongoose.model('Order').countDocuments();
+    this.orderId = `ORD${String(count + 1).padStart(6, '0')}`;
+  }
+  next();
+});
 
 const Order = mongoose.model('Order', orderSchema);
 module.exports = Order;

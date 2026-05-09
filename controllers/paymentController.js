@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
+const Coupon = require('../models/Coupon');
 
 // Initialize Razorpay
 const razorpay = new Razorpay({
@@ -14,7 +15,7 @@ const razorpay = new Razorpay({
 // @route   POST /api/payment/create-order
 // @access  Private
 const createOrder = async (req, res) => {
-  const { shippingAddress } = req.body;
+  const { shippingAddress, appliedCoupon, discount, finalAmount } = req.body;
   
   try {
     // Get user's cart
@@ -34,12 +35,19 @@ const createOrder = async (req, res) => {
       }
     }
     
+    // Update coupon usage count if applied
+    if (appliedCoupon?.id) {
+      await Coupon.findByIdAndUpdate(appliedCoupon.id, {
+        $inc: { usedCount: 1 }
+      });
+    }
+    
     // Generate unique order ID
     const orderId = `ORD${Date.now()}${Math.floor(Math.random() * 1000)}`;
     
-    // Create Razorpay order
+    // Create Razorpay order with final amount after discount
     const options = {
-      amount: Math.round(cart.totalPrice * 100), // Amount in paise
+      amount: Math.round(finalAmount * 100), // Amount in paise
       currency: 'INR',
       receipt: orderId,
       payment_capture: 1,
@@ -59,7 +67,10 @@ const createOrder = async (req, res) => {
         quantity: item.quantity,
         image: item.image,
       })),
-      totalAmount: cart.totalPrice,
+      originalAmount: cart.totalPrice,
+      totalAmount: finalAmount,
+      discount: discount,
+      appliedCoupon: appliedCoupon?.code || null,
       shippingAddress: shippingAddress,
       paymentStatus: 'pending',
       orderStatus: 'pending',
@@ -71,7 +82,7 @@ const createOrder = async (req, res) => {
         id: order._id,
         orderId: order.orderId,
         razorpayOrderId: razorpayOrder.id,
-        amount: cart.totalPrice,
+        amount: finalAmount,
         currency: 'INR',
       },
       razorpayKey: process.env.RAZORPAY_KEY_ID,
